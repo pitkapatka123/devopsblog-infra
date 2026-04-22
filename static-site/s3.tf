@@ -10,11 +10,12 @@
 resource "aws_s3_bucket" "origin" {
   bucket = var.origin_bucket_name
 
-  # Origin bucket holds the deployed site artifact. Accidental destroy would
-  # break the site and require a fresh baker run + deploy.
-  lifecycle {
-    prevent_destroy = true
-  }
+  # No `prevent_destroy`. The bucket's contents are fully reproducible via
+  # `Application2/tooling/deploy.sh` (baker + aws s3 sync). Versioning +
+  # the operator's deploy loop are sufficient; blocking destroy adds friction
+  # without protecting anything irreplaceable. `prevent_destroy` is reserved
+  # for the ACM cert and the Route 53 hosted zone, which ARE load-bearing
+  # identities that cannot be recreated casually.
 
   tags = {
     Project   = "devopsblog"
@@ -80,6 +81,33 @@ data "aws_iam_policy_document" "origin" {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
       values   = [aws_cloudfront_distribution.site.arn]
+    }
+  }
+
+  # Belt-and-braces: deny ALL s3:* on this bucket (and its objects) if the
+  # request was not made over TLS. CloudFront already uses TLS to reach S3
+  # via OAC, so this is defence-in-depth rather than a blocker for any real
+  # access path. Explicit Deny with NotPrincipal = * overrides the Allow above
+  # ONLY when the transport is not TLS.
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.origin.arn,
+      "${aws_s3_bucket.origin.arn}/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
     }
   }
 }

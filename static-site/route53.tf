@@ -70,3 +70,21 @@ resource "aws_route53_record" "www" {
     evaluate_target_health = false
   }
 }
+
+# CAA record on the apex.
+# - `issue "amazon.com"` — only Amazon's CA (ACM) may issue non-wildcard certs.
+# - `issuewild ";"` — no CA may issue wildcard certs for this domain.
+# - `iodef "mailto:..."` — contact for policy-violation reports. Uses a
+#   generic placeholder; operator can update later without an infra rebuild.
+resource "aws_route53_record" "caa" {
+  zone_id = aws_route53_zone.site.zone_id
+  name    = var.site_domain
+  type    = "CAA"
+  ttl     = 300
+
+  records = [
+    "0 issue \"amazon.com\"",
+    "0 issuewild \";\"",
+    "0 iodef \"mailto:admin@devopsblog.online\"",
+  ]
+}

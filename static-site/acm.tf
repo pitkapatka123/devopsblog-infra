@@ -15,9 +15,12 @@ resource "aws_acm_certificate" "site" {
   validation_method         = "DNS"
 
   # Long-lived identity backing CloudFront; replacement causes downtime.
+  # `create_before_destroy` deliberately OMITTED: it contradicts `prevent_destroy`
+  # (replace-then-drop vs. block-drop). Pass 1 audit flagged the pairing as
+  # mutually incoherent. Keep `prevent_destroy` — the cert is the load-bearing
+  # identity for the distribution and must not be recreated casually.
   lifecycle {
-    prevent_destroy       = true
-    create_before_destroy = true
+    prevent_destroy = true
   }
 
   tags = {
